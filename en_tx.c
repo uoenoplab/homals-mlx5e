@@ -281,7 +281,15 @@ static void mlx5e_sq_xmit_prepare(struct mlx5e_txqsq *sq, struct sk_buff *skb,
 		stats->packets += skb_shinfo(skb)->gso_segs;
 	} else {
 		u8 mode = mlx5e_tx_wqe_inline_mode(sq, skb, accel);
-		u16 ihs = mlx5e_calc_min_inline(mode, skb);
+		u16 ihs;
+
+#ifdef CONFIG_MLX5_EN_TLS
+		if (accel && accel->tls.tls_tisn &&
+		    mode == MLX5_INLINE_MODE_TCP_UDP)
+			ihs = skb_transport_offset(skb) + tcp_hdrlen(skb);
+		else
+#endif
+			ihs = mlx5e_calc_min_inline(mode, skb);
 
 		*attr = (struct mlx5e_tx_attr) {
 			.opcode    = MLX5_OPCODE_SEND,
