@@ -459,6 +459,10 @@ int mlx5e_ktls_add_tx(struct net_device *netdev, struct sock *sk,
 	struct mlx5e_priv *priv;
 	int err;
 
+	mlx5_core_info(mdev, "mlx5e_ktls_add invoked, sk %px", sk);
+
+	// TODO: check homa protocol here?
+
 	tls_ctx = tls_get_ctx(sk);
 	priv = netdev_priv(netdev);
 	pool = priv->tls->tx_pool;
