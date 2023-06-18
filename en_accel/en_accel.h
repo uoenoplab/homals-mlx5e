@@ -115,6 +115,15 @@ struct mlx5e_accel_tx_state {
 #endif
 };
 
+static inline bool mlx5e_accel_tx_begin_homa(struct net_device *dev,
+					struct mlx5e_txqsq *sq,
+					struct sk_buff *skb,
+					struct mlx5e_accel_tx_state *state)
+{
+	mlx5_core_info(priv->mdev, "mlx5e_accel_tx_begin_homa invoked");
+	return true;
+}
+
 static inline bool mlx5e_accel_tx_begin(struct net_device *dev,
 					struct mlx5e_txqsq *sq,
 					struct sk_buff *skb,
@@ -124,9 +133,7 @@ static inline bool mlx5e_accel_tx_begin(struct net_device *dev,
 		mlx5e_udp_gso_handle_tx_skb(skb);
 
 	if (sk->sk_protocol == 0xFD)
-		mlx5_core_info(priv->mdev, "mlx5e_accel_tx_begin_homa invoked");
-		return false;
-		// TODO
+		return mlx5e_accel_tx_begin_homa(dev, sq, skb, state);
 
 #ifdef CONFIG_MLX5_EN_TLS
 	/* May send SKBs and WQEs. */
