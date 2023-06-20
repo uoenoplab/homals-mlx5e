@@ -120,7 +120,18 @@ static inline bool mlx5e_accel_tx_begin_homa(struct net_device *dev,
 					struct sk_buff *skb,
 					struct mlx5e_accel_tx_state *state)
 {
-	mlx5_core_info(priv->mdev, "mlx5e_accel_tx_begin_homa invoked");
+	struct mlx5e_ktls_offload_context_tx *priv_tx;
+	priv_tx = netdev_priv(netdev);
+	mlx5_core_info(priv_tx->mdev, "mlx5e_accel_tx_begin_homa invoked");
+
+	#ifdef CONFIG_MLX5_EN_TLS
+		/* May send SKBs and WQEs. */
+		// if (mlx5e_ktls_skb_offloaded(skb))
+			if (unlikely(!mlx5e_ktls_handle_tx_skb_homa(dev, sq, skb,
+							&state->tls)))
+				return false;
+	#endif
+
 	return true;
 }
 
@@ -131,9 +142,6 @@ static inline bool mlx5e_accel_tx_begin(struct net_device *dev,
 {
 	if (skb_is_gso(skb) && skb_shinfo(skb)->gso_type & SKB_GSO_UDP_L4)
 		mlx5e_udp_gso_handle_tx_skb(skb);
-
-	if (sk->sk_protocol == 0xFD)
-		return mlx5e_accel_tx_begin_homa(dev, sq, skb, state);
 
 #ifdef CONFIG_MLX5_EN_TLS
 	/* May send SKBs and WQEs. */
@@ -201,10 +209,6 @@ static inline void mlx5e_accel_tx_finish(struct mlx5e_txqsq *sq,
 					 struct mlx5e_accel_tx_state *state,
 					 struct mlx5_wqe_inline_seg *inlseg)
 {
-	if (sk->sk_protocol == 0xFD)
-		mlx5_core_info(priv->mdev, "mlx5e_accel_tx_finish_homa invoked");
-		return false;
-		// TODO
 
 #ifdef CONFIG_MLX5_EN_TLS
 	mlx5e_ktls_handle_tx_wqe(&wqe->ctrl, &state->tls);

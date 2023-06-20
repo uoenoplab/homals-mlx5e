@@ -16,6 +16,9 @@ struct mlx5e_accel_tx_tls_state {
 
 u16 mlx5e_ktls_get_stop_room(struct mlx5_core_dev *mdev, struct mlx5e_params *params);
 
+bool mlx5e_ktls_handle_tx_skb_homa(struct net_device *netdev, struct mlx5e_txqsq *sq,
+			      struct sk_buff *skb,
+			      struct mlx5e_accel_tx_tls_state *state);
 bool mlx5e_ktls_handle_tx_skb(struct net_device *netdev, struct mlx5e_txqsq *sq,
 			      struct sk_buff *skb,
 			      struct mlx5e_accel_tx_tls_state *state);

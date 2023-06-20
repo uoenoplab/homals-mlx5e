@@ -459,13 +459,14 @@ int mlx5e_ktls_add_tx(struct net_device *netdev, struct sock *sk,
 	struct mlx5e_priv *priv;
 	int err;
 
+	priv = netdev_priv(netdev);
+
 	mlx5_core_info(priv->mdev, "mlx5e_ktls_add_tx invoked, sk %px, sk.prot.name %s, sk.sk_protocol %hu", sk, sk->sk_prot->name, sk->sk_protocol);
 	if (sk->sk_protocol == 0xFD)
 		mlx5_core_info(priv->mdev, "mlx5e_ktls_add_tx_homa invoked");
 		// TODO
 
 	tls_ctx = tls_get_ctx(sk);
-	priv = netdev_priv(netdev);
 	pool = priv->tls->tx_pool;
 
 	priv_tx = pool_pop(pool);
@@ -821,6 +822,74 @@ err_out:
 		put_page(skb_frag_page(&info.frags[i]));
 
 	return MLX5E_KTLS_SYNC_FAIL;
+}
+
+bool mlx5e_ktls_handle_tx_skb_homa(struct net_device *netdev, struct mlx5e_txqsq *sq,
+			      struct sk_buff *skb,
+			      struct mlx5e_accel_tx_tls_state *state)
+{
+	struct mlx5e_ktls_offload_context_tx *priv_tx;
+	struct mlx5e_sq_stats *stats = sq->stats;
+	struct net_device *tls_netdev;
+	struct tls_context *tls_ctx;
+	int datalen;
+	u32 seq;
+
+	datalen = skb->len - skb_tcp_all_headers(skb);
+	if (!datalen)
+		return true;
+
+	mlx5e_tx_mpwqe_ensure_complete(sq);
+
+	tls_ctx = tls_get_ctx(skb->sk);
+	tls_netdev = rcu_dereference_bh(tls_ctx->netdev);
+	/* Don't WARN on NULL: if tls_device_down is running in parallel,
+	 * netdev might become NULL, even if tls_is_sk_tx_device_offloaded was
+	 * true. Rather continue processing this packet.
+	 */
+	if (WARN_ON_ONCE(tls_netdev && tls_netdev != netdev))
+		goto err_out;
+
+	priv_tx = mlx5e_get_ktls_tx_priv_ctx(tls_ctx);
+
+	if (unlikely(mlx5e_ktls_tx_offload_test_and_clear_pending(priv_tx)))
+		mlx5e_ktls_tx_post_param_wqes(sq, priv_tx, false, false);
+
+	seq = ntohl(tcp_hdr(skb)->seq);
+	if (unlikely(priv_tx->expected_seq != seq)) {
+		enum mlx5e_ktls_sync_retval ret =
+			mlx5e_ktls_tx_handle_ooo(priv_tx, sq, datalen, seq);
+
+		stats->tls_ooo++;
+
+		switch (ret) {
+		case MLX5E_KTLS_SYNC_DONE:
+			break;
+		case MLX5E_KTLS_SYNC_SKIP_NO_DATA:
+			stats->tls_skip_no_sync_data++;
+			if (likely(!skb->decrypted))
+				goto out;
+			WARN_ON_ONCE(1);
+			goto err_out;
+		case MLX5E_KTLS_SYNC_FAIL:
+			stats->tls_drop_no_sync_data++;
+			goto err_out;
+		}
+	}
+
+	priv_tx->expected_seq = seq + datalen;
+
+	state->tls_tisn = priv_tx->tisn;
+
+	stats->tls_encrypted_packets += skb_is_gso(skb) ? skb_shinfo(skb)->gso_segs : 1;
+	stats->tls_encrypted_bytes   += datalen;
+
+out:
+	return true;
+
+err_out:
+	dev_kfree_skb_any(skb);
+	return false;
 }
 
 bool mlx5e_ktls_handle_tx_skb(struct net_device *netdev, struct mlx5e_txqsq *sq,

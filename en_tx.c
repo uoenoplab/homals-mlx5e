@@ -698,8 +698,13 @@ netdev_tx_t mlx5e_xmit(struct sk_buff *skb, struct net_device *dev)
 	}
 
 	/* May send SKBs and WQEs. */
-	if (unlikely(!mlx5e_accel_tx_begin(dev, sq, skb, &accel)))
-		return NETDEV_TX_OK;
+	if (skb->sk->sk_protocol != 0xFD) {
+		if (unlikely(!mlx5e_accel_tx_begin(dev, sq, skb, &accel)))
+			return NETDEV_TX_OK;
+	} else {
+		if (unlikely(!mlx5e_accel_tx_begin_homa(dev, sq, skb, &accel)))
+			return NETDEV_TX_OK;
+	}
 
 	mlx5e_sq_xmit_prepare(sq, skb, &accel, &attr);
 
