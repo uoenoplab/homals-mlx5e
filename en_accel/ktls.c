@@ -45,6 +45,33 @@ void mlx5_ktls_destroy_key(struct mlx5_core_dev *mdev, u32 key_id)
 	mlx5_destroy_encryption_key(mdev, key_id);
 }
 
+struct homals_tls_add_hack {
+	struct tls_crypto_info *crypto_info;
+	struct mlx5e_ktls_offload_context_tx **driver_state;
+};
+
+static int mlx5e_ktls_add_homa(struct net_device *netdev, struct sock *sk,
+			  enum tls_offload_ctx_dir direction,
+			  struct homals_tls_add_hack *tls_add_hack,
+			  u32 start_offload_tcp_sn)
+{
+	struct tls_crypto_info *crypto_info = tls_add_hack->crypto_info;
+	struct mlx5e_ktls_offload_context_tx **driver_state = tls_add_hack->driver_state;
+	struct mlx5e_priv *priv = netdev_priv(netdev);
+	struct mlx5_core_dev *mdev = priv->mdev;
+	int err;
+
+	if (!mlx5e_ktls_type_check(mdev, crypto_info))
+		return -EOPNOTSUPP;
+
+	if (direction == TLS_OFFLOAD_CTX_DIR_TX)
+		err = mlx5e_ktls_add_tx_homa(netdev, sk, crypto_info, driver_state, start_offload_tcp_sn);
+	else
+		return -EOPNOTSUPP;
+
+	return err;
+}
+
 static int mlx5e_ktls_add(struct net_device *netdev, struct sock *sk,
 			  enum tls_offload_ctx_dir direction,
 			  struct tls_crypto_info *crypto_info,
@@ -53,6 +80,9 @@ static int mlx5e_ktls_add(struct net_device *netdev, struct sock *sk,
 	struct mlx5e_priv *priv = netdev_priv(netdev);
 	struct mlx5_core_dev *mdev = priv->mdev;
 	int err;
+
+	if (sk->sk_protocol == 0xFD)
+		return mlx5e_ktls_add_homa(netdev, sk, (void *)crypto_info, start_offload_tcp_sn);
 
 	if (!mlx5e_ktls_type_check(mdev, crypto_info))
 		return -EOPNOTSUPP;

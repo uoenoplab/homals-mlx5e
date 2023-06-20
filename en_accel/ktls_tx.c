@@ -450,25 +450,18 @@ static struct mlx5e_ktls_offload_context_tx *pool_pop(struct mlx5e_tls_tx_pool *
 
 /* End of pool API */
 
-int mlx5e_ktls_add_tx(struct net_device *netdev, struct sock *sk,
-		      struct tls_crypto_info *crypto_info, u32 start_offload_tcp_sn)
+int mlx5e_ktls_add_tx_homa(struct net_device *netdev, struct sock *sk,
+			   struct tls_crypto_info *crypto_info;
+			   struct mlx5e_ktls_offload_context_tx **driver_state;
+			   u32 start_offload_tcp_sn)
 {
 	struct mlx5e_ktls_offload_context_tx *priv_tx;
 	struct mlx5e_tls_tx_pool *pool;
-	struct tls_context *tls_ctx;
 	struct mlx5e_priv *priv;
 	int err;
 
 	priv = netdev_priv(netdev);
-
-	mlx5_core_info(priv->mdev, "mlx5e_ktls_add_tx invoked, sk %px, sk.prot.name %s, sk.sk_protocol %hu", sk, sk->sk_prot->name, sk->sk_protocol);
-	if (sk->sk_protocol == 0xFD)
-		mlx5_core_info(priv->mdev, "mlx5e_ktls_add_tx_homa invoked");
-		// TODO
-
-	tls_ctx = tls_get_ctx(sk);
 	pool = priv->tls->tx_pool;
-
 	priv_tx = pool_pop(pool);
 	if (IS_ERR(priv_tx))
 		return PTR_ERR(priv_tx);
@@ -486,6 +479,50 @@ int mlx5e_ktls_add_tx(struct net_device *netdev, struct sock *sk,
 	case TLS_CIPHER_AES_GCM_256:
 		priv_tx->crypto_info.crypto_info_256 =
 			*(struct tls12_crypto_info_aes_gcm_256 *)crypto_info;
+		break;
+	default:
+		WARN_ONCE(1, "Unsupported cipher type %u\n",
+			  crypto_info->cipher_type);
+		return -EOPNOTSUPP;
+	}
+
+	*driver_state = priv_tx;
+	priv_tx->ctx_post_pending = true;
+	atomic64_inc(&priv_tx->sw_stats->tx_tls_ctx);
+
+	return 0;
+
+err_create_key:
+	pool_push(pool, priv_tx);
+	return err;
+}
+
+ // sk is a cheat here, actually is homals_ctx->priv_tx->driver_state
+int mlx5e_ktls_add_tx(struct net_device *netdev, struct sock *sk,
+		      struct tls_crypto_info *crypto_info, u32 start_offload_tcp_sn)
+{
+	struct mlx5e_ktls_offload_context_tx *priv_tx;
+	struct mlx5e_tls_tx_pool *pool;
+	struct tls_context *tls_ctx;
+	struct mlx5e_priv *priv;
+	int err;
+
+	tls_ctx = tls_get_ctx(sk);
+	pool = priv->tls->tx_pool;
+
+	priv_tx = pool_pop(pool);
+	if (IS_ERR(priv_tx))
+		return PTR_ERR(priv_tx);
+
+	err = mlx5_ktls_create_key(pool->mdev, crypto_info, &priv_tx->key_id);
+	if (err)
+		goto err_create_key;
+
+	priv_tx->expected_seq = start_offload_tcp_sn;
+	switch (crypto_info->cipher_type) {
+	case TLS_CIPHER_AES_GCM_128:
+		priv_tx->crypto_info.crypto_info_128 =
+			*(struct tls12_crypto_info_aes_gcm_128 *)crypto_info;
 		break;
 	default:
 		WARN_ONCE(1, "Unsupported cipher type %u\n",
