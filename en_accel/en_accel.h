@@ -125,11 +125,11 @@ static inline bool mlx5e_accel_tx_begin_homa(struct net_device *dev,
 	mlx5_core_info(priv_tx->mdev, "mlx5e_accel_tx_begin_homa invoked");
 
 	#ifdef CONFIG_MLX5_EN_TLS
-		/* May send SKBs and WQEs. */
-		// if (mlx5e_ktls_skb_offloaded(skb))
-			if (unlikely(!mlx5e_ktls_handle_tx_skb_homa(dev, sq, skb,
-							&state->tls)))
-				return false;
+	/* May send SKBs and WQEs. */
+	// if (mlx5e_ktls_skb_offloaded(skb))
+		if (unlikely(!mlx5e_ktls_handle_tx_skb_homa(dev, sq, skb,
+						&state->tls)))
+			return false;
 	#endif
 
 	return true;

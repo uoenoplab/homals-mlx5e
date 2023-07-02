@@ -451,8 +451,8 @@ static struct mlx5e_ktls_offload_context_tx *pool_pop(struct mlx5e_tls_tx_pool *
 /* End of pool API */
 
 int mlx5e_ktls_add_tx_homa(struct net_device *netdev, struct sock *sk,
-			   struct tls_crypto_info *crypto_info;
-			   struct mlx5e_ktls_offload_context_tx **driver_state;
+			   struct tls_crypto_info *crypto_info,
+			   struct mlx5e_ktls_offload_context_tx **driver_state,
 			   u32 start_offload_tcp_sn)
 {
 	struct mlx5e_ktls_offload_context_tx *priv_tx;
@@ -497,7 +497,6 @@ err_create_key:
 	return err;
 }
 
- // sk is a cheat here, actually is homals_ctx->priv_tx->driver_state
 int mlx5e_ktls_add_tx(struct net_device *netdev, struct sock *sk,
 		      struct tls_crypto_info *crypto_info, u32 start_offload_tcp_sn)
 {
@@ -859,6 +858,25 @@ err_out:
 		put_page(skb_frag_page(&info.frags[i]));
 
 	return MLX5E_KTLS_SYNC_FAIL;
+}
+
+static inline void hexdump(struct mlx5_core_dev *mdev, const char *title, unsigned char *buf,
+			   unsigned int len)
+{
+	char line[3*16+1]; // 16 bytes with space in Hex
+	int i = 0;
+	mlx5_core_info(mdev, "%s", title);
+	i = 0;
+	while (len--) {
+		sprintf(&line[3*i], "%02x ", *buf++);
+		i += 1;
+		if (i == 16) {
+			mlx5_core_info(mdev, "%s\n", line);
+			i = 0;
+		}
+	}
+	if (i != 0)
+		mlx5_core_info(mdev, "%s", line);
 }
 
 bool mlx5e_ktls_handle_tx_skb_homa(struct net_device *netdev, struct mlx5e_txqsq *sq,

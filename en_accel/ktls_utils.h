@@ -20,8 +20,8 @@ enum {
 };
 
 int mlx5e_ktls_add_tx_homa(struct net_device *netdev, struct sock *sk,
-			   struct tls_crypto_info *crypto_info;
-			   struct mlx5e_ktls_offload_context_tx **driver_state;
+			   struct tls_crypto_info *crypto_info,
+			   struct mlx5e_ktls_offload_context_tx **driver_state,
 			   u32 start_offload_tcp_sn);
 int mlx5e_ktls_add_tx(struct net_device *netdev, struct sock *sk,
 		      struct tls_crypto_info *crypto_info, u32 start_offload_tcp_sn);
