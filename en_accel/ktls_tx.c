@@ -865,7 +865,7 @@ static inline void hexdump(struct mlx5_core_dev *mdev, const char *title, unsign
 {
 	char line[3*16+1]; // 16 bytes with space in Hex
 	int i = 0;
-	mlx5_core_info(mdev, "%s", title);
+	mlx5_core_info(mdev, "%s\n", title);
 	i = 0;
 	while (len--) {
 		sprintf(&line[3*i], "%02x ", *buf++);
@@ -878,6 +878,11 @@ static inline void hexdump(struct mlx5_core_dev *mdev, const char *title, unsign
 	if (i != 0)
 		mlx5_core_info(mdev, "%s", line);
 }
+
+struct homals_hw_context_tx {
+	void *driver_state;
+	struct net_device *netdev;
+};
 
 bool mlx5e_ktls_handle_tx_skb_homa(struct net_device *netdev, struct mlx5e_txqsq *sq,
 			      struct sk_buff *skb,
@@ -896,41 +901,42 @@ bool mlx5e_ktls_handle_tx_skb_homa(struct net_device *netdev, struct mlx5e_txqsq
 
 	mlx5e_tx_mpwqe_ensure_complete(sq);
 
-	tls_ctx = tls_get_ctx(skb->sk);
-	tls_netdev = rcu_dereference_bh(tls_ctx->netdev);
-	/* Don't WARN on NULL: if tls_device_down is running in parallel,
-	 * netdev might become NULL, even if tls_is_sk_tx_device_offloaded was
-	 * true. Rather continue processing this packet.
-	 */
-	if (WARN_ON_ONCE(tls_netdev && tls_netdev != netdev))
-		goto err_out;
+	// tls_ctx = tls_get_ctx(skb->sk);
+	// tls_netdev = rcu_dereference_bh(tls_ctx->netdev);
+	// /* Don't WARN on NULL: if tls_device_down is running in parallel,
+	//  * netdev might become NULL, even if tls_is_sk_tx_device_offloaded was
+	//  * true. Rather continue processing this packet.
+	//  */
+	// if (WARN_ON_ONCE(tls_netdev && tls_netdev != netdev))
+	// 	goto err_out;
 
-	priv_tx = mlx5e_get_ktls_tx_priv_ctx(tls_ctx);
+	// priv_tx = mlx5e_get_ktls_tx_priv_ctx(tls_ctx);
+	priv_tx = *((void *)(skb->cb + sizeof(skb->cb) - sizeof(void *)));
 
 	if (unlikely(mlx5e_ktls_tx_offload_test_and_clear_pending(priv_tx)))
 		mlx5e_ktls_tx_post_param_wqes(sq, priv_tx, false, false);
 
-	seq = ntohl(tcp_hdr(skb)->seq);
-	if (unlikely(priv_tx->expected_seq != seq)) {
-		enum mlx5e_ktls_sync_retval ret =
-			mlx5e_ktls_tx_handle_ooo(priv_tx, sq, datalen, seq);
+	// seq = ntohl(tcp_hdr(skb)->seq);
+	// if (unlikely(priv_tx->expected_seq != seq)) {
+	// 	enum mlx5e_ktls_sync_retval ret =
+	// 		mlx5e_ktls_tx_handle_ooo(priv_tx, sq, datalen, seq);
 
-		stats->tls_ooo++;
+	// 	stats->tls_ooo++;
 
-		switch (ret) {
-		case MLX5E_KTLS_SYNC_DONE:
-			break;
-		case MLX5E_KTLS_SYNC_SKIP_NO_DATA:
-			stats->tls_skip_no_sync_data++;
-			if (likely(!skb->decrypted))
-				goto out;
-			WARN_ON_ONCE(1);
-			goto err_out;
-		case MLX5E_KTLS_SYNC_FAIL:
-			stats->tls_drop_no_sync_data++;
-			goto err_out;
-		}
-	}
+	// 	switch (ret) {
+	// 	case MLX5E_KTLS_SYNC_DONE:
+	// 		break;
+	// 	case MLX5E_KTLS_SYNC_SKIP_NO_DATA:
+	// 		stats->tls_skip_no_sync_data++;
+	// 		if (likely(!skb->decrypted))
+	// 			goto out;
+	// 		WARN_ON_ONCE(1);
+	// 		goto err_out;
+	// 	case MLX5E_KTLS_SYNC_FAIL:
+	// 		stats->tls_drop_no_sync_data++;
+	// 		goto err_out;
+	// 	}
+	// }
 
 	priv_tx->expected_seq = seq + datalen;
 
